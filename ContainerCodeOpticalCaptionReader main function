@@ -1,0 +1,720 @@
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <tesseract/baseapi.h>
+#include <leptonica/allheaders.h>
+#include <string>
+#include "Tesseract.h"
+
+
+int main()
+{
+
+    cv::Mat img = cv::imread("C:\\Users\\octav\\Videos\\Images of Containers\\model11.png");
+
+    if (img.empty())
+    {
+        std::cout << "Could not open or find the image" << std::endl;
+        std::cin.get(); //wait for any key press
+        return -1;
+    }
+
+    int CheckFirstCode = 0;
+    int CheckSecondCode = 0;
+    int CheckThirdCode = 0;
+
+    cv::Mat grayImg;
+    cv::Mat BlurImg;
+    cv::Mat ThreshImg;
+    cv::Mat KernalImg;
+    cv::Mat DilateImg;
+    cv::Mat ContourImg;
+    cv::Mat CropImg;
+    cv::Mat CodeImg;
+    cv::Mat GrayCodeImg;
+    cv::Mat ThreshCodeImg;
+
+    cv::Mat FirstCodeImg;
+    cv::Mat SecondCodeImg;
+    cv::Mat ThirdCodeImg;
+    cv::Mat FourthCodeImg;
+
+    std::string ContainerCode;
+
+    std::vector<std::vector<cv::Point> > Contour;
+    std::vector<cv::Vec4i> Hierarchy;
+    std::vector<std::vector<int> > FirstLineSearching;
+
+    std::vector<std::vector<int>> BoxCoordinates;
+    std::vector<std::vector<int>> FilteredBoxCoordinates;
+
+    std::vector<std::vector<int>> BoxCoordinatesSortingFirstLine;
+    std::vector<std::vector<int>> BoxCoordinatesSortingSecondLine;
+
+    std::vector<std::vector<int>> BoxCoordinatesFirstLine;
+    std::vector<std::vector<int>> BoxCoordinatesSecondLine;
+
+    std::vector<std::vector<int>> SortedBoxCoordinatesFirstLine;
+    std::vector<std::vector<int>> SortedBoxCoordinatesSecondLine;
+
+    std::vector<std::vector<int>> BoxCoordinatesFirstCode;
+    std::vector<std::vector<int>> BoxCoordinatesSecondCode;
+    std::vector<std::vector<int>> BoxCoordinatesThirdCode;
+
+    std::vector<int>BoxCoordinatesFirstIterator;
+    std::vector<int>BoxCoordinatesSecondIterator;
+
+    int SumsHeights = 0;
+    int NumbersHeights = 0;
+    int AverageHeight = 0;
+
+    int SumsWidths = 0;
+    int NumbersWidths = 0;
+    int AverageWidth = 0;
+
+    int FirstCommonHeight = 0;
+    int SecondCommonHeight = 0;
+
+    std::map<int, int> RepeteadNumbers;
+
+    cv::Rect SortedBoundingBoxesFirstLine;
+    cv::Rect SortedBoundingBoxesSecondLine;
+
+    cv::Rect BoundingBoxes;
+
+    int OriginY = img.rows * 0.115;
+    int OriginX = img.cols * 0.5;
+    int HeightExtend = img.rows * 0.3;
+    int WidthExtend = img.cols;
+
+    cv::Range With(OriginY, HeightExtend);
+    cv::Range Heigth(OriginX, WidthExtend);
+
+    CropImg = img(cv::Range(OriginY, HeightExtend), cv::Range(OriginX, WidthExtend));
+    CodeImg = img(cv::Range(OriginY, HeightExtend), cv::Range(OriginX, WidthExtend));
+
+    cv::cvtColor(CropImg, grayImg, cv::COLOR_BGR2GRAY);
+    cv::GaussianBlur(grayImg, BlurImg, cv::Size(1, 1), 0, 1);
+    cv::threshold(BlurImg, ThreshImg, 0, 255, 9);
+
+    if (cv::countNonZero(ThreshImg) > ThreshImg.rows * ThreshImg.cols * 0.5)
+    {
+        cv::threshold(BlurImg, ThreshImg, 0, 255, 8);
+    }
+
+    KernalImg = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 13));
+
+    cv::dilate(ThreshImg, DilateImg, KernalImg, cv::Point(-1, -1), 0);
+    cv::findContours(DilateImg, Contour, Hierarchy, cv::RetrievalModes::RETR_TREE, cv::ContourApproximationModes::CHAIN_APPROX_SIMPLE);
+
+    // First Filter Criteria
+    for (int i = 0; i < Contour.size(); i++)
+    {
+        cv::Rect BoundingBoxes = cv::boundingRect(Contour[i]);
+        BoundingBoxes.size().width;
+        BoundingBoxes.size().height;
+
+        if (BoundingBoxes.size().height < CropImg.rows * 0.5)
+        {
+            int CopyHeight = BoundingBoxes.size().height;
+            SumsHeights = SumsHeights + CopyHeight;
+            NumbersHeights++;
+
+        }
+    }
+
+
+    if (NumbersHeights > 0)
+    {
+        AverageHeight = SumsHeights / NumbersHeights;
+    }
+
+    // Second Filter Criteria
+    for (int i = 0; i < Contour.size(); i++)
+    {
+        BoundingBoxes = cv::boundingRect(Contour[i]);
+        BoundingBoxes.size().width;
+        BoundingBoxes.size().height;
+
+        if (BoundingBoxes.size().height < CropImg.rows * 0.5 && BoundingBoxes.size().height > AverageHeight)
+        {
+            //cv::rectangle(CropImg, BoundingBoxes, cv::Scalar(0, 255, 0), 1);
+            int CopyX = BoundingBoxes.x;
+            int CopyY = BoundingBoxes.y;
+            std::vector<int> CopyXY;
+
+            CopyXY.push_back(CopyX);
+            CopyXY.push_back(CopyY);
+
+            BoxCoordinates.push_back(CopyXY);
+        }
+    }
+
+    // Most Common Height
+    for (int n = 0; n < BoxCoordinates.size(); n++)
+    {
+        auto Counter = RepeteadNumbers.insert(std::pair<int, int>(BoxCoordinates[n][1], 1));
+
+        if (Counter.second == false)
+        {
+            Counter.first->second++;
+        }
+
+    }
+
+    int SizeReference = 0;
+
+    // First Common Value of Height
+    for (auto& e : RepeteadNumbers)
+    {
+
+        if (SizeReference < e.second)
+        {
+            SizeReference = e.second;
+            FirstCommonHeight = e.first;
+        }
+    }
+
+    int Tolerance = FirstCommonHeight * 0.2;
+
+    SizeReference = 0;
+
+    // Second Common Value of Height
+    for (auto& e : RepeteadNumbers)
+    {
+
+        if (e.first <= FirstCommonHeight + Tolerance && e.first >= FirstCommonHeight - Tolerance)
+        {
+            // Do Nothing
+        }
+        else
+        {
+            if (SizeReference < e.second)
+            {
+                SizeReference = e.second;
+                SecondCommonHeight = e.first;
+            }
+        }
+    }
+
+
+    int FirstThreshold = FirstCommonHeight * 0.2;
+
+    for (int f = 0; f < BoxCoordinates.size(); f++)
+    {
+        if (BoxCoordinates[f][1] <= FirstCommonHeight + FirstThreshold && BoxCoordinates[f][1] >= FirstCommonHeight - FirstThreshold)
+        {
+            BoxCoordinatesSortingFirstLine.push_back(BoxCoordinates[f]);
+        }
+
+    }
+
+    // Saving First line
+    BoxCoordinatesFirstLine = BoxCoordinatesSortingFirstLine;
+
+    int SecondThreshold = SecondCommonHeight * 0.2;
+
+    for (int s = 0; s < BoxCoordinates.size(); s++)
+    {
+        if (BoxCoordinates[s][1] <= SecondCommonHeight + SecondThreshold && BoxCoordinates[s][1] >= SecondCommonHeight - SecondThreshold)
+        {
+            BoxCoordinatesSortingSecondLine.push_back(BoxCoordinates[s]);
+        }
+    }
+
+    // Saving Second line
+    BoxCoordinatesSecondLine = BoxCoordinatesSortingSecondLine;
+
+    while (BoxCoordinatesSortingFirstLine.size() > 0)
+    {
+        int ReferenceWidth = CropImg.cols + 1;
+        int ReferenceHeight = CropImg.rows + 1;
+        int Still = 0;
+        int Iterator = 0;
+
+        for (int u = 0; u < BoxCoordinatesSortingFirstLine.size(); u++)
+        {
+            if (BoxCoordinatesSortingFirstLine[u][0] < ReferenceWidth && BoxCoordinatesSortingFirstLine[u][0] >= 0)
+            {
+                ReferenceWidth = BoxCoordinatesSortingFirstLine[u][0];
+            }
+        }
+
+        for (int j = 0; j < BoxCoordinatesSortingFirstLine.size(); j++)
+        {
+            int Uncertainy = ReferenceWidth;
+
+            if (BoxCoordinatesSortingFirstLine[j][0] == ReferenceWidth && BoxCoordinatesSortingFirstLine[j][1] < ReferenceHeight && BoxCoordinatesSortingFirstLine[j][1] >= 0)
+            {
+                ReferenceHeight = BoxCoordinatesSortingFirstLine[j][1];
+                Iterator = j;
+            }
+        }
+
+
+        BoxCoordinatesFirstIterator.push_back(Iterator);
+        BoxCoordinatesSortingFirstLine[Iterator][0] = -1;
+        BoxCoordinatesSortingFirstLine[Iterator][1] = -1;
+
+        for (int k = 0; k < BoxCoordinatesSortingFirstLine.size(); k++)
+        {
+            if (BoxCoordinatesSortingFirstLine[k][0] != -1 && BoxCoordinatesSortingFirstLine[k][1] != -1)
+            {
+                Still = 1;
+            }
+        }
+
+        if (Still == 0)
+        {
+            std::vector<std::vector<int>> Empty;
+            BoxCoordinatesSortingFirstLine.clear();
+            BoxCoordinatesSortingFirstLine.swap(Empty);
+        }
+    }
+
+
+    while (BoxCoordinatesSortingSecondLine.size() > 0)
+    {
+        int ReferenceWidth = CropImg.cols + 1;
+        int ReferenceHeight = CropImg.rows + 1;
+        int Still = 0;
+        int Iterator = 0;
+
+        for (int u = 0; u < BoxCoordinatesSortingSecondLine.size(); u++)
+        {
+            if (BoxCoordinatesSortingSecondLine[u][0] < ReferenceWidth && BoxCoordinatesSortingSecondLine[u][0] >= 0)
+            {
+                ReferenceWidth = BoxCoordinatesSortingSecondLine[u][0];
+            }
+        }
+
+        for (int j = 0; j < BoxCoordinatesSortingSecondLine.size(); j++)
+        {
+            int Uncertainy = ReferenceWidth;
+
+            if (BoxCoordinatesSortingSecondLine[j][0] == ReferenceWidth && BoxCoordinatesSortingSecondLine[j][1] < ReferenceHeight && BoxCoordinatesSortingSecondLine[j][1] >= 0)
+            {
+                ReferenceHeight = BoxCoordinatesSortingSecondLine[j][1];
+                Iterator = j;
+            }
+        }
+
+
+        BoxCoordinatesSecondIterator.push_back(Iterator);
+        BoxCoordinatesSortingSecondLine[Iterator][0] = -1;
+        BoxCoordinatesSortingSecondLine[Iterator][1] = -1;
+
+        for (int k = 0; k < BoxCoordinatesSortingSecondLine.size(); k++)
+        {
+            if (BoxCoordinatesSortingSecondLine[k][0] != -1 && BoxCoordinatesSortingSecondLine[k][1] != -1)
+            {
+                Still = 1;
+            }
+        }
+
+        if (Still == 0)
+        {
+            std::vector<std::vector<int>> Empty;
+            BoxCoordinatesSortingSecondLine.clear();
+            BoxCoordinatesSortingSecondLine.swap(Empty);
+        }
+    }
+
+
+    for (int s = 0; s < BoxCoordinatesFirstIterator.size(); s++)
+    {
+        for (int t = 0; t < BoxCoordinatesFirstLine.size(); t++)
+        {
+            if (t == BoxCoordinatesFirstIterator[s])
+            {
+                SortedBoxCoordinatesFirstLine.push_back(BoxCoordinatesFirstLine[t]);
+            }
+        }
+    }
+
+    int ClosestReference;
+
+    for (int n = 0; n < SortedBoxCoordinatesFirstLine.size(); n++)
+    {
+
+        if (n > 0)
+        {
+            SumsWidths = SumsWidths + (SortedBoxCoordinatesFirstLine[n][0] - ClosestReference);
+            NumbersWidths++;
+        }
+
+        ClosestReference = SortedBoxCoordinatesFirstLine[n][0];
+    }
+
+    if (NumbersWidths > 0)
+    {
+        AverageWidth = SumsWidths / NumbersWidths;
+    }
+
+
+    for (int s = 0; s < BoxCoordinatesSecondIterator.size(); s++)
+    {
+        for (int t = 0; t < BoxCoordinatesSecondLine.size(); t++)
+        {
+            if (t == BoxCoordinatesSecondIterator[s])
+            {
+                SortedBoxCoordinatesSecondLine.push_back(BoxCoordinatesSecondLine[t]);
+            }
+        }
+    }
+
+
+    // First Line BoundingBoxes
+    for (int x = 0; x < SortedBoxCoordinatesFirstLine.size(); x++)
+    {
+        for (int i = 0; i < Contour.size(); i++)
+        {
+            SortedBoundingBoxesFirstLine = cv::boundingRect(Contour[i]);
+
+            if (SortedBoundingBoxesFirstLine.x == SortedBoxCoordinatesFirstLine[x][0] && SortedBoundingBoxesFirstLine.y == SortedBoxCoordinatesFirstLine[x][1])
+            {
+                std::vector<int> TempVector;
+                TempVector.push_back(SortedBoundingBoxesFirstLine.x);
+                TempVector.push_back(SortedBoundingBoxesFirstLine.size().width);
+
+                FirstLineSearching.push_back(TempVector);
+            }
+        }
+    }
+
+    int FirstThresHoldReferenceWidth;
+    int FirstThresHoldReferenceY;
+    int FirstThresHoldTolerance = AverageWidth * 0.5;
+    int FirstFound = 0;
+    int FirstDivisionIterator = 0;
+
+    for (int n = 0; n < FirstLineSearching.size(); n++)
+    {
+        if (n > 0)
+        {
+            if (FirstLineSearching[n][0] > FirstThresHoldTolerance + FirstThresHoldReferenceWidth + FirstThresHoldReferenceY)
+            {
+                if (FirstFound == 0)
+                {
+                    FirstDivisionIterator = n;
+                    FirstFound = 1;
+                }
+
+            }
+        }
+
+        FirstThresHoldReferenceY = FirstLineSearching[n][0];
+        FirstThresHoldReferenceWidth = FirstLineSearching[n][1];
+    }
+
+    int SecondThresHoldReferenceWidth;
+    int SecondThresHoldReferenceY;
+    int SecondThresHoldTolerance = AverageWidth * 0.5;
+    int SecondFound = 0;
+    int SecondDivisionIterator = 0;
+
+    for (int n = FirstDivisionIterator; n < FirstLineSearching.size(); n++)
+    {
+        if (n > FirstDivisionIterator)
+        {
+            if (FirstLineSearching[n][0] > SecondThresHoldTolerance + SecondThresHoldReferenceWidth + SecondThresHoldReferenceY)
+            {
+                if (SecondFound < FirstLineSearching[n][0])
+                {
+                    SecondFound = FirstLineSearching[n][0];
+                    SecondDivisionIterator = n;
+                }
+
+            }
+        }
+
+        SecondThresHoldReferenceY = FirstLineSearching[n][0];
+        SecondThresHoldReferenceWidth = FirstLineSearching[n][1];
+    }
+
+
+    // Obtaining First Code 
+    int ReferenceFirstCodeMinX = CropImg.cols + 1;
+    int ReferenceFirstCodeMinY = CropImg.rows + 1;
+    int ReferenceFirstCodeMaxWidth = -1;
+    int ReferenceFirstCodeMaxHeight = -1;
+
+    for (int x = 0; x < FirstDivisionIterator; x++)
+    {
+        for (int i = 0; i < Contour.size(); i++)
+        {
+            SortedBoundingBoxesFirstLine = cv::boundingRect(Contour[i]);
+
+            if (SortedBoundingBoxesFirstLine.x == SortedBoxCoordinatesFirstLine[x][0] && SortedBoundingBoxesFirstLine.y == SortedBoxCoordinatesFirstLine[x][1])
+            {
+                if (ReferenceFirstCodeMinX > SortedBoundingBoxesFirstLine.x)
+                {
+                    ReferenceFirstCodeMinX = SortedBoundingBoxesFirstLine.x;
+                }
+
+                if (ReferenceFirstCodeMinY > SortedBoundingBoxesFirstLine.y)
+                {
+                    ReferenceFirstCodeMinY = SortedBoundingBoxesFirstLine.y;
+                }
+
+                if (ReferenceFirstCodeMaxWidth < SortedBoundingBoxesFirstLine.size().width + SortedBoundingBoxesFirstLine.x)
+                {
+                    ReferenceFirstCodeMaxWidth = SortedBoundingBoxesFirstLine.size().width + SortedBoundingBoxesFirstLine.x;
+                }
+
+
+                if (ReferenceFirstCodeMaxHeight < SortedBoundingBoxesFirstLine.size().height + SortedBoundingBoxesFirstLine.y)
+                {
+                    ReferenceFirstCodeMaxHeight = SortedBoundingBoxesFirstLine.size().height + SortedBoundingBoxesFirstLine.y;
+                }
+
+            }
+        }
+    }
+
+    if (ReferenceFirstCodeMinX < CropImg.cols + 1 && ReferenceFirstCodeMinX > 0 && ReferenceFirstCodeMinY < CropImg.rows + 1 && ReferenceFirstCodeMinY > 0 && ReferenceFirstCodeMaxWidth < CropImg.cols + 1 && ReferenceFirstCodeMaxWidth > 0 && ReferenceFirstCodeMaxHeight < CropImg.rows + 1 && ReferenceFirstCodeMaxHeight > 0)
+    {
+        cv::Point FirstCodePoint1(ReferenceFirstCodeMinX, ReferenceFirstCodeMinY);
+        cv::Point FirstCodePoint2(ReferenceFirstCodeMaxWidth, ReferenceFirstCodeMaxHeight);
+
+        //cv::rectangle(CropImg, FirstCodePoint1, FirstCodePoint2, cv::Scalar(0, 0, 255), 1);
+
+        FirstCodeImg = CropImg(cv::Range(ReferenceFirstCodeMinY, ReferenceFirstCodeMaxHeight), cv::Range(ReferenceFirstCodeMinX, ReferenceFirstCodeMaxWidth));
+
+    }
+
+
+    // Obtaining Second Code
+    int ReferenceSecondCodeMinX = CropImg.cols + 1;
+    int ReferenceSecondCodeMinY = CropImg.rows + 1;
+    int ReferenceSecondCodeMaxWidth = -1;
+    int ReferenceSecondCodeMaxHeight = -1;
+
+    for (int x = FirstDivisionIterator; x < SecondDivisionIterator; x++)
+    {
+        for (int i = 0; i < Contour.size(); i++)
+        {
+            SortedBoundingBoxesFirstLine = cv::boundingRect(Contour[i]);
+
+            if (SortedBoundingBoxesFirstLine.x == SortedBoxCoordinatesFirstLine[x][0] && SortedBoundingBoxesFirstLine.y == SortedBoxCoordinatesFirstLine[x][1])
+            {
+                if (ReferenceSecondCodeMinX > SortedBoundingBoxesFirstLine.x)
+                {
+                    ReferenceSecondCodeMinX = SortedBoundingBoxesFirstLine.x;
+                }
+
+                if (ReferenceSecondCodeMinY > SortedBoundingBoxesFirstLine.y)
+                {
+                    ReferenceSecondCodeMinY = SortedBoundingBoxesFirstLine.y;
+                }
+
+                if (ReferenceSecondCodeMaxWidth < SortedBoundingBoxesFirstLine.size().width + SortedBoundingBoxesFirstLine.x)
+                {
+                    ReferenceSecondCodeMaxWidth = SortedBoundingBoxesFirstLine.size().width + SortedBoundingBoxesFirstLine.x;
+                }
+
+                if (ReferenceSecondCodeMaxHeight < SortedBoundingBoxesFirstLine.size().height + SortedBoundingBoxesFirstLine.y)
+                {
+                    ReferenceSecondCodeMaxHeight = SortedBoundingBoxesFirstLine.size().height + SortedBoundingBoxesFirstLine.y;
+                }
+            }
+        }
+    }
+
+    if (ReferenceSecondCodeMinX < CropImg.cols + 1 && ReferenceSecondCodeMinX > 0 && ReferenceSecondCodeMinY < CropImg.rows + 1 && ReferenceSecondCodeMinY > 0 && ReferenceSecondCodeMaxWidth < CropImg.cols + 1 && ReferenceSecondCodeMaxWidth > 0 && ReferenceSecondCodeMaxHeight < CropImg.rows + 1 && ReferenceSecondCodeMaxHeight > 0)
+    {
+        cv::Point SecondCodePoint1(ReferenceSecondCodeMinX, ReferenceSecondCodeMinY);
+        cv::Point SecondCodePoint2(ReferenceSecondCodeMaxWidth, ReferenceSecondCodeMaxHeight);
+
+        //cv::rectangle(CropImg, SecondCodePoint1, SecondCodePoint2, cv::Scalar(0, 0, 255), 1);
+
+    }
+
+    // Obtaining Third Code
+    int ReferenceThirdCodeMinX = CropImg.cols + 1;
+    int ReferenceThirdCodeMinY = CropImg.rows + 1;
+    int ReferenceThirdCodeMaxWidth = -1;
+    int ReferenceThirdCodeMaxHeight = -1;
+
+    for (int x = SecondDivisionIterator; x < SortedBoxCoordinatesFirstLine.size(); x++)
+    {
+        for (int i = 0; i < Contour.size(); i++)
+        {
+            SortedBoundingBoxesFirstLine = cv::boundingRect(Contour[i]);
+
+            if (SortedBoundingBoxesFirstLine.x == SortedBoxCoordinatesFirstLine[x][0] && SortedBoundingBoxesFirstLine.y == SortedBoxCoordinatesFirstLine[x][1])
+            {
+                if (ReferenceThirdCodeMinX > SortedBoundingBoxesFirstLine.x)
+                {
+                    ReferenceThirdCodeMinX = SortedBoundingBoxesFirstLine.x;
+                }
+
+                if (ReferenceThirdCodeMinY > SortedBoundingBoxesFirstLine.y)
+                {
+                    ReferenceThirdCodeMinY = SortedBoundingBoxesFirstLine.y;
+                }
+
+                if (ReferenceThirdCodeMaxWidth < SortedBoundingBoxesFirstLine.size().width + SortedBoundingBoxesFirstLine.x)
+                {
+                    ReferenceThirdCodeMaxWidth = SortedBoundingBoxesFirstLine.size().width + SortedBoundingBoxesFirstLine.x;
+                }
+
+                if (ReferenceThirdCodeMaxHeight < SortedBoundingBoxesFirstLine.size().height + SortedBoundingBoxesFirstLine.y)
+                {
+                    ReferenceThirdCodeMaxHeight = SortedBoundingBoxesFirstLine.size().height + SortedBoundingBoxesFirstLine.y;
+                }
+            }
+        }
+    }
+
+    if (ReferenceThirdCodeMinX < CropImg.cols + 1 && ReferenceThirdCodeMinX > 0 && ReferenceThirdCodeMinY < CropImg.rows + 1 && ReferenceThirdCodeMinY > 0 && ReferenceThirdCodeMaxWidth < CropImg.cols + 1 && ReferenceThirdCodeMaxWidth > 0 && ReferenceThirdCodeMaxHeight < CropImg.rows + 1 && ReferenceThirdCodeMaxHeight > 0)
+    {
+        cv::Point ThirdCodePoint1(ReferenceThirdCodeMinX, ReferenceThirdCodeMinY);
+        cv::Point ThirdCodePoint2(ReferenceThirdCodeMaxWidth, ReferenceThirdCodeMaxHeight);
+
+        //cv::rectangle(CropImg, ThirdCodePoint1, ThirdCodePoint2, cv::Scalar(0, 0, 255), 1);
+
+    }
+
+    // Obtaining Fourth Code
+    int ReferenceFourthCodeMinX = CropImg.cols + 1;
+    int ReferenceFourthCodeMinY = CropImg.rows + 1;
+    int ReferenceFourthCodeMaxWidth = -1;
+    int ReferenceFourthCodeMaxHeight = -1;
+
+    for (int x = 0; x < SortedBoxCoordinatesSecondLine.size(); x++)
+    {
+        for (int i = 0; i < Contour.size(); i++)
+        {
+            SortedBoundingBoxesSecondLine = cv::boundingRect(Contour[i]);
+
+            if (SortedBoundingBoxesSecondLine.x == SortedBoxCoordinatesSecondLine[x][0] && SortedBoundingBoxesSecondLine.y == SortedBoxCoordinatesSecondLine[x][1])
+            {
+                if (ReferenceFourthCodeMinX > SortedBoundingBoxesSecondLine.x)
+                {
+                    ReferenceFourthCodeMinX = SortedBoundingBoxesSecondLine.x;
+                }
+
+                if (ReferenceFourthCodeMinY > SortedBoundingBoxesSecondLine.y)
+                {
+                    ReferenceFourthCodeMinY = SortedBoundingBoxesSecondLine.y;
+                }
+
+                if (ReferenceFourthCodeMaxWidth < SortedBoundingBoxesSecondLine.size().width + SortedBoundingBoxesSecondLine.x)
+                {
+                    ReferenceFourthCodeMaxWidth = SortedBoundingBoxesSecondLine.size().width + SortedBoundingBoxesSecondLine.x;
+                }
+
+
+                if (ReferenceFourthCodeMaxHeight < SortedBoundingBoxesSecondLine.size().height + SortedBoundingBoxesSecondLine.y)
+                {
+                    ReferenceFourthCodeMaxHeight = SortedBoundingBoxesSecondLine.size().height + SortedBoundingBoxesSecondLine.y;
+                }
+            }
+        }
+    }
+
+    if (ReferenceFourthCodeMinX < CropImg.cols + 1 && ReferenceFourthCodeMinX > 0 && ReferenceFourthCodeMinY < CropImg.rows + 1 && ReferenceFourthCodeMinY > 0 && ReferenceFourthCodeMaxWidth < CropImg.cols + 1 && ReferenceFourthCodeMaxWidth > 0 && ReferenceFourthCodeMaxHeight < CropImg.rows + 1 && ReferenceFourthCodeMaxHeight > 0)
+    {
+        cv::Point FourthCodePoint1(ReferenceFourthCodeMinX, ReferenceFourthCodeMinY);
+        cv::Point FourthCodePoint2(ReferenceFourthCodeMaxWidth, ReferenceFourthCodeMaxHeight);
+
+        //cv::rectangle(CropImg, FourthCodePoint1, FourthCodePoint2, cv::Scalar(0, 0, 255), 1);
+    }
+
+
+    cv::imshow("Code image", CodeImg);
+    cv::cvtColor(CodeImg, GrayCodeImg, cv::COLOR_BGR2GRAY);
+    cv::threshold(GrayCodeImg, ThreshCodeImg, 0, 255, 8);
+
+    if (cv::countNonZero(ThreshCodeImg) > ThreshCodeImg.rows * ThreshCodeImg.cols * 0.5)
+    {
+        cv::threshold(GrayCodeImg, ThreshCodeImg, 0, 255, 8);
+    }
+    else
+    {
+        cv::threshold(GrayCodeImg, ThreshCodeImg, 0, 255, 9);
+    }
+
+    cv::imshow("Threshold Code image", ThreshCodeImg);
+
+    if (ReferenceFirstCodeMinX < CropImg.cols + 1 && ReferenceFirstCodeMinX > 0 && ReferenceFirstCodeMinY < CropImg.rows + 1 && ReferenceFirstCodeMinY > 0 && ReferenceFirstCodeMaxWidth < CropImg.cols + 1 && ReferenceFirstCodeMaxWidth > 0 && ReferenceFirstCodeMaxHeight < CropImg.rows + 1 && ReferenceFirstCodeMaxHeight > 0)
+    {
+
+        FirstCodeImg = ThreshCodeImg(cv::Range(ReferenceFirstCodeMinY, ReferenceFirstCodeMaxHeight), cv::Range(ReferenceFirstCodeMinX, ReferenceFirstCodeMaxWidth));
+
+        cv::copyMakeBorder(FirstCodeImg, FirstCodeImg, AverageHeight, AverageHeight, AverageHeight, AverageHeight, cv::BORDER_ISOLATED, cv::Scalar(255));
+
+        ContainerCode = ShippingCode(FirstCodeImg);
+
+        if (!ContainerCode.empty())
+        {
+            ContainerCode.pop_back();
+            ContainerCode = ContainerCode + " ";
+            CheckFirstCode = ContainerCode.size();
+        }
+
+    }
+
+    if (ReferenceSecondCodeMinX < CropImg.cols + 1 && ReferenceSecondCodeMinX > 0 && ReferenceSecondCodeMinY < CropImg.rows + 1 && ReferenceSecondCodeMinY > 0 && ReferenceSecondCodeMaxWidth < CropImg.cols + 1 && ReferenceSecondCodeMaxWidth > 0 && ReferenceSecondCodeMaxHeight < CropImg.rows + 1 && ReferenceSecondCodeMaxHeight > 0)
+    {
+
+        SecondCodeImg = ThreshCodeImg(cv::Range(ReferenceSecondCodeMinY, ReferenceSecondCodeMaxHeight), cv::Range(ReferenceSecondCodeMinX, ReferenceSecondCodeMaxWidth));
+        cv::copyMakeBorder(SecondCodeImg, SecondCodeImg, AverageHeight, AverageHeight, AverageHeight, AverageHeight, cv::BORDER_ISOLATED, cv::Scalar(255));
+
+        ContainerCode = ContainerCode + ShippingCode(SecondCodeImg);
+
+        if (CheckFirstCode < ContainerCode.size())
+        {
+            ContainerCode.pop_back();
+            ContainerCode = ContainerCode + " ";
+            CheckSecondCode = ContainerCode.size();
+        }
+    }
+
+    if (ReferenceThirdCodeMinX < CropImg.cols + 1 && ReferenceThirdCodeMinX > 0 && ReferenceThirdCodeMinY < CropImg.rows + 1 && ReferenceThirdCodeMinY > 0 && ReferenceThirdCodeMaxWidth < CropImg.cols + 1 && ReferenceThirdCodeMaxWidth > 0 && ReferenceThirdCodeMaxHeight < CropImg.rows + 1 && ReferenceThirdCodeMaxHeight > 0)
+    {
+        
+        ThirdCodeImg = ThreshCodeImg(cv::Range(ReferenceThirdCodeMinY, ReferenceThirdCodeMaxHeight), cv::Range(ReferenceThirdCodeMinX, ReferenceThirdCodeMaxWidth));
+        cv::copyMakeBorder(ThirdCodeImg, ThirdCodeImg, 1.15*AverageHeight, 1.15*AverageHeight, 1.15*AverageHeight, 1.15*AverageHeight, cv::BORDER_ISOLATED, cv::Scalar(255));
+
+        ContainerCode = ContainerCode + ShippingCode(ThirdCodeImg);
+
+        if (CheckSecondCode < ContainerCode.size())
+        {
+            CheckThirdCode = CheckFirstCode;
+        }
+        else
+        {
+            CheckThirdCode = CheckFirstCode;
+            ContainerCode = ContainerCode + "\n";
+        }
+        
+    }
+
+    if (ReferenceFourthCodeMinX < CropImg.cols + 1 && ReferenceFourthCodeMinX > 0 && ReferenceFourthCodeMinY < CropImg.rows + 1 && ReferenceFourthCodeMinY > 0 && ReferenceFourthCodeMaxWidth < CropImg.cols + 1 && ReferenceFourthCodeMaxWidth > 0 && ReferenceFourthCodeMaxHeight < CropImg.rows + 1 && ReferenceFourthCodeMaxHeight > 0)
+    {
+
+        FourthCodeImg = ThreshCodeImg(cv::Range(ReferenceFourthCodeMinY, ReferenceFourthCodeMaxHeight), cv::Range(ReferenceFourthCodeMinX, ReferenceFourthCodeMaxWidth));
+        cv::copyMakeBorder(FourthCodeImg, FourthCodeImg, AverageHeight, AverageHeight, AverageHeight, AverageHeight, cv::BORDER_ISOLATED, cv::Scalar(255));
+
+        for (int s = 0; s < CheckThirdCode; s++)
+        {
+            ContainerCode = ContainerCode + " ";
+        }
+        
+        ContainerCode = ContainerCode + ShippingCode(FourthCodeImg);
+
+    }
+
+
+
+
+    std::cout << ContainerCode;
+
+    cv::waitKey(0);
+    cv::destroyAllWindows();
+
+
+
+    return 0;
+}
